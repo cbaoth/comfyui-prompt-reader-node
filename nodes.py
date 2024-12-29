@@ -1222,8 +1222,21 @@ class SDParameterExtractor:
 
     @staticmethod
     def parse_setting(settings):
-        pattern = re.compile(r"([^:,]+):\s*\(([^)]+)\)|([^:,]+):\s*\"([^\"]+)\"|([^:,]+):\s*([^,]+)")
-
+        # Some points regarding the pattern matching:
+        # * `(?:^|,)[\s\n\r]*\b`: ensures that e.g. lora-tags `<lora:foo...>` are not considered keys using `\b`
+        # * `[^:,\n\r\"]+`: assume linebreaks and quotes are never part of keys
+        # * Ensures that empty values `My key: ""` will be matched (seems appropriate)
+        pattern_key =       r"(?:^|,)[\s\n\r]*\b([^:,\n\r\"]+):\s*"
+        # The same but stripped of all capture groups
+        pattern_key_nocap = re.sub(r"\((?!\?:)", "(?:", pattern_key)
+        pattern = re.compile(
+            # Parentheses-enclosed values, treated as comma-separated tuples
+            pattern_key + r"\(([^)]*)\)" # TODO consider adding pattern_key as lookahead, vs. stopping at `)`
+            # Double-quoted, treated as strings with double quotes removed
+            r"|" + pattern_key + r"\"([^\"]*)\"" # TODO consider adding pattern_key as lookahead, vs. stopping at `"`
+            # Regular values, a following key will mark end of the value (using lookahead allowing any char `.`)
+            r"|" + pattern_key + r"((?:(?!" + pattern_key_nocap + r").)*)"
+        )
         matches = pattern.findall(settings)
 
         result = {}
