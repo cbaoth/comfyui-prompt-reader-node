@@ -154,3 +154,5 @@ cython_debug/
 
 .idea/
 preview/
+.vscode/launch.json
+.zcompdump

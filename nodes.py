@@ -1222,23 +1222,87 @@ class SDParameterExtractor:
 
     @staticmethod
     def parse_setting(settings):
-        pattern = re.compile(r"([^:,]+):\s*\(([^)]+)\)|([^:,]+):\s*\"([^\"]+)\"|([^:,]+):\s*([^,]+)")
-
+        # TODO Works for my use case, but:
+        # * Not very elegant (WiP)
+        # * Not very robust (presumably), not heavily tested outside my scenarios
+        # * Generally not a good idea to meddle with json in this context (format not intended for this purpose)
+        #   * Consider adding separate PNG meta field
+        #((?<![^\w])\b[\w ]+):\s*\((?:(?:.|\n)(?!,\s[^:\n]+))\)|((?<![^\w])\b[\w\s]+):\s*\"((?:(?:.|\n)(?!,\s[^:\n]+))*)\"|((?<![\B])[\w\s]+):\s*((?:(?:.|\n)(?!,\s[^:\n]+))*)
+        #pattern = re.compile(r"([^:,]+):\s*\(([^)]+)\)|([^:,]+):\s*\"([^\"]+)\"|([^:,]+):\s*([^,]+)")
+        #pattern = re.compile(r"([^:,\n]+):\s*\(([^)]+)\)|([^:,\n]+):\s*\"([^\"]+)\"|([^:,\n]+):\s*([^,]+)")
+        #pattern_key        + r"\"\"\"[\s\n]*(\{(?:(?!\}[\s\n]*(?:^|,)[\s\n]*\b[^:,\n\"{}\[\]]+:\s*).)*\})[\s\n]*\"\"\""
+        # * `(?:^|,)[\s\n]*\b` ensures that keys false-like "<key>?:", e.g. LoRAs in "Extra Info:", are ignored
+        # * `[^:,\n\"]+` matches key names, assume linebreaks and quotes would only produce false positives
+        pattern_key = r"(?:^|,)[\s\n]*\b([^:,\n\"]+):\s*"
+        # * Consider's empty values, e.g. `My key: ""` will be matched (appropriate)
+        pattern = re.compile(
+            # Curly-brace-enclosed values, treated as JSON objects or regular values if not a valid JSON
+            pattern_key        + r"(\{(?:(?!\}[\s\n]*(?:^|,)[\s\n]*\b[^:,\n\"{}\[\]]+:\s*).)*\})"
+            # Parentheses-enclosed values, treated as comma-separated tuples
+            r"|" + pattern_key + r"\(([^)]*)\)" # TODO add + pattern_key
+            # Double-quoted, treated as strings with double quotes removed
+            r"|" + pattern_key + r"\"([^\"]*)\"" # TODO add + pattern_key
+            # Regular values, treated as strings 1:1
+            r"|" + pattern_key + r"((?:(?![\s\n]*(?:^|,)[\s\n]*\b[^:,\n\"{}\[\]]+:\s*).)*)"
+        )
         matches = pattern.findall(settings)
+
+        def parse_json(value_curly, key, result):
+            json_value = json.loads(value_curly)
+            #print(f"!DEBUG! JSON found: {key}\n  -> {json_value}") # Debugging
+            result[key] = json_value
+            for k, v in json_value.items():
+                #print(f"!DEBUG! Typ {type(v)} found in {key}: {k}\n  -> {v}")
+                if isinstance(v, dict):
+                    nested_key = f"{key}.{k}"
+                    result[nested_key] = v
+                    for sub_key, item in v.items():
+                        nested_key = f"{key}.{k}.{sub_key}"
+                        result[nested_key] = item
+                    continue
+                if isinstance(v, list):
+                    for i, item in enumerate(v):
+                        nested_key = f"{key}.{k}[{i}]"
+                        result[nested_key] = item
+                    continue
+                else:
+                    nested_key = f"{key}?{k}"
+                    result[k] = v
+            return result
 
         result = {}
         for match in matches:
-            key_paren, value_paren, key_quotes, value_quotes, key_nonparen, value_nonparen = match
-            if key_paren:
+            #print(f"!DEBUG! Match found: {match}") # Debugging
+            #key_paren, value_paren, key_quotes, value_quotes, key_nonparen, value_nonparen, key_dblqotes, value_dblqotes = match
+            key_curly, value_curly, key_paren, value_paren, key_quotes, value_quotes, key_nonparen, value_nonparen = match
+            if key_curly:
+                # Curly-brace-enclosed values are treated as JSON objects, only one level deep
+                key = key_curly.strip()
+                try:
+                    result = parse_json(value_curly, key, result)
+                    continue  # skip if JSON object, otherwise proceed with the regular steps below
+                except json.JSONDecodeError:
+                        # Not a valid JSON object
+                        value = value_curly.strip()
+                        #print(f"!DEBUG! Error parsig presumed JSON: {key}\n  -> {value}") # Debugging
+            elif key_paren:
+                # Parentheses-enclosed values are treated as tuples
                 key = key_paren.strip()
-                value = value_paren.strip()
-                value = tuple(v.strip() for v in value.split(","))
+                value = tuple(v.strip() for v in value_paren.split(","))
             elif key_quotes:
                 key = key_quotes.strip()
                 value = value_quotes.strip()
             else:
                 key = key_nonparen.strip()
                 value = value_nonparen.strip()
+
+            # Skip empty keys, should not happen unless there is a bug, so lets log it just in case (vs. ignoring)
+            if key.strip() == "":
+                output_to_terminal(f"Empty key found with value [{value}], skipping...")
+                continue
+            # FIXME this should not happen, check regex, e.g. scheduler-custom-selected-index: ""
+            if value.strip() == '""':
+                value = ""
             result[key] = value
 
         return result
