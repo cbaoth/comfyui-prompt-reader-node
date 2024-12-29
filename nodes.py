@@ -450,31 +450,11 @@ class SDPromptSaver:
 
             extra_info_real = f", Extra info: {extra_info}" if extra_info else ""
 
-            variable_map = {
-                "%date": self.get_time(date_format),
-                "%time": self.get_time(time_format),
-                "%seed": seed,
-                "%steps": steps,
-                "%cfg": cfg,
-                "%width": width,
-                "%height": height,
-                "%extension": extension,
-                "%model": Path(model_name_real).stem,
-                "%sampler": sampler_name_real,
-                "%scheduler": scheduler_real,
-                "%quality": jpg_webp_quality,
-            }
-
-            subfolder = self.get_path(path, variable_map)
-            output_folder = Path(full_output_folder) / subfolder
-            output_folder.mkdir(parents=True, exist_ok=True)
-            counter = self.get_counter(output_folder)
-            variable_map["%counter"] = f"{counter:05}"
-
             i = 255.0 * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             metadata = None
 
+            model_hash = None
             model_hash_str = ""
             vae_hash_str = ""
             vae_str = ""
@@ -535,6 +515,28 @@ class SDPromptSaver:
             hashes_str = (
                 f", Hashes: {json.dumps(hashes)}" if (hashes and resource_hash) else ""
             )
+
+            variable_map = {
+                "%date": self.get_time(date_format),
+                "%time": self.get_time(time_format),
+                "%seed": seed,
+                "%steps": steps,
+                "%cfg": cfg,
+                "%width": width,
+                "%height": height,
+                "%extension": extension,
+                "%modelhash": model_hash if isinstance(model_hash, str) else "",
+                "%model": Path(model_name_real).stem,
+                "%sampler": sampler_name_real,
+                "%scheduler": scheduler_real,
+                "%quality": jpg_webp_quality,
+            }
+
+            subfolder = self.get_path(path, variable_map)
+            output_folder = Path(full_output_folder) / subfolder
+            output_folder.mkdir(parents=True, exist_ok=True)
+            counter = self.get_counter(output_folder)
+            variable_map["%counter"] = f"{counter:05}"
 
             comment = (
                 f"{positive}\n"
@@ -654,9 +656,22 @@ class SDPromptSaver:
 
     @staticmethod
     def get_path(name, variable_map):
-        for variable, value in variable_map.items():
-            name = name.replace(variable, str(value))
-        return Path(name)
+        result = name
+        for variable, value in sorted(variable_map.items(), key=lambda x: len(x[0]), reverse=True):
+            pattern = f"{variable}(?::(\d+)%)?"
+
+            def replace_func(match):
+                truncation = match.group(1)
+                val = str(value)
+                if truncation:
+                    val = val[:int(truncation)]
+                return val
+
+            result = re.sub(pattern, replace_func, result)
+            print(f"After replacing {variable}: {result}")  # Debug print
+
+        print(f"Final path: {result}\nVariable map: {variable_map}")  # Debug print
+        return Path(result)
 
     @staticmethod
     def get_time(time_format):
