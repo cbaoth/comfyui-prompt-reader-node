@@ -424,6 +424,8 @@ class SDPromptSaver:
         prompt=None,
         extra_pnginfo=None,
     ):
+
+        #print(f"SDPromptSaver#save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
         (
             full_output_folder,
             filename_alt,
@@ -436,6 +438,7 @@ class SDPromptSaver:
             images[0].shape[1],
             images[0].shape[0],
         )
+
 
         results = []
         files = []
@@ -710,6 +713,185 @@ class SDPromptSaver:
     @staticmethod
     def unpack_singleton(arr: list):
         return arr[0] if len(arr) == 1 else arr
+
+
+class SDPromptSaverContext(SDPromptSaver):
+
+    @classmethod
+    def INPUT_TYPES(s):
+        for file in folder_paths.get_filename_list("embeddings"):
+            SDPromptSaverContext.ti_paths.append(file)
+            SDPromptSaverContext.ti_names.append(Path(file).name)
+            SDPromptSaverContext.ti_stems.append(Path(file).stem)
+        return {
+            "optional": {
+                "context": ("RGTHREE_CONTEXT",),
+                "images": ("IMAGE",),
+                "filename": (
+                    "STRING",
+                    {"default": "ComfyUI_%time_%seed_%counter", "multiline": False},
+                ),
+                "path": ("STRING", {"default": "%date/", "multiline": False}),
+                "model_name": (folder_paths.get_filename_list("checkpoints"),),
+                "vae_name": (folder_paths.get_filename_list("vae"),),
+                "seed": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                    },
+                ),
+                "steps": (
+                    "INT",
+                    {"default": 20, "min": 1, "max": 10000},
+                ),
+                "cfg": (
+                    "FLOAT",
+                    {
+                        "default": 8.0,
+                        "min": 0.0,
+                        "max": 100.0,
+                        "step": 0.5,
+                        "round": 0.01,
+                    },
+                ),
+                "sampler_name": (comfy.samplers.KSampler.SAMPLERS, ),
+                "scheduler": (comfy.samplers.KSampler.SCHEDULERS, ),
+                "lora_name": any_type,
+                "width": (
+                    "INT",
+                    {"default": 1, "min": 1, "max": MAX_RESOLUTION, "step": 1},
+                ),
+                "height": (
+                    "INT",
+                    {"default": 1, "min": 1, "max": MAX_RESOLUTION, "step": 1},
+                ),
+                "positive": ("STRING", {"default": "", "multiline": True}),
+                "negative": ("STRING", {"default": "", "multiline": True}),
+                "extension": (["png", "jpg", "jpeg", "webp"],),
+                "calculate_hash": ("BOOLEAN", {"default": True}),
+                "resource_hash": ("BOOLEAN", {"default": True}),
+                "lossless_webp": ("BOOLEAN", {"default": True}),
+                "jpg_webp_quality": ("INT", {"default": 100, "min": 1, "max": 100}),
+                "date_format": (
+                    "STRING",
+                    {"default": "%Y-%m-%d", "multiline": False},
+                ),
+                "time_format": (
+                    "STRING",
+                    {"default": "%H%M%S", "multiline": False},
+                ),
+                # TODO consider adding something like this to join g/l prompt as needed
+                # "ctx_prompt_format": (
+                #     "STRING",
+                #     {"default": "%g\n\n# L\n%l", "multiline": False},
+                # ),
+                # "ctx_prompt_format_neg": (
+                #     "STRING",
+                #     {"default": "%g\n\n# L\n%l", "multiline": False},
+                # ),
+                "save_metadata_file": ("BOOLEAN", {"default": False}),
+                "extra_info": ("STRING", {"default": "", "multiline": True}),
+            },
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("FILENAME", "FILE_PATH", "METADATA")
+    FUNCTION = "save_images"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "SD Prompt Reader"
+
+    def save_images(
+        self,
+        context={},
+        images=None,
+        filename: str = "ComfyUI_%time_%seed_%counter",
+        path: str = "%date/",
+        model_name: str = "",
+        vae_name: str = "",
+        seed: int = 0,
+        steps: int = 0,
+        cfg: float = 0.0,
+        sampler_name: str = "",
+        # "sampler_name_str": ("STRING", {"default": ""}),
+        scheduler: str = "",
+        # "scheduler_str": ("STRING", {"default": ""}),
+        lora_name=None,
+        width: int = 1,
+        height: int = 1,
+        # TODO consider adding separate inputs for g/l prompts, same as in the context
+        positive: str = "",
+        negative: str = "",
+        extension: str = "png",
+        calculate_hash: bool = True,
+        resource_hash: bool = True,
+        lossless_webp: bool = True,
+        jpg_webp_quality: int = 100,
+        date_format: str = "%Y-%m-%d",
+        time_format: str = "%H%M%S",
+        # TODO consider adding something like this to join g/l prompt as needed
+        #ctx_prompt_format: str = "%g\n\n# L\n%l",
+        #ctx_prompt_format_neg: str = "%g\n\n# L\n%l",
+        save_metadata_file: bool = False,
+        extra_info: str = "",
+        prompt=None,
+        extra_pnginfo=None,
+    ):
+        #print(f"SDPromptSaverContext#save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
+
+        # Use the individual inputs if provided (not None), otherwise fallback to the context values
+        context_values = context or {}
+        images = images if images is not None else context_values.get("images")
+        model_name = model_name if model_name is not None else value_if_isinstance(string, context_values.get("ckpt_name", str, ""))
+        #vae_name = vae_name if isinstance(vae_name, str) else ""
+        seed = seed if seed is not None else context_values.get("seed")
+        steps = steps if steps is not None else context_values.get("steps")
+        cfg = cfg if cfg is not None else context_values.get("cfg")
+        sampler_name = sampler_name if sampler_name is not None else context_values.get("sampler")
+        scheduler = scheduler if scheduler is not None else context_values.get("scheduler")
+        width = width if width is not None else context_values.get("clip_width")
+        height = height if height is not None else context_values.get("clip_height")
+        # TODO consider adding logic to apply ctx_prompt_format/ctx_prompt_format_neg patterns (join g/l prompts)
+        positive = positive if positive is not None else context_values.get("text_pos_g")
+        negative = negative if negative is not None else context_values.get("text_neg_g")
+
+        return super().save_images(
+            images=images,
+            filename=filename,
+            path=path,
+            model_name=model_name,
+            vae_name=vae_name,
+            seed=seed,
+            steps=steps,
+            cfg=cfg,
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+            lora_name=lora_name,
+            width=width,
+            height=height,
+            positive=positive,
+            negative=negative,
+            extension=extension,
+            calculate_hash=calculate_hash,
+            resource_hash=resource_hash,
+            lossless_webp=lossless_webp,
+            jpg_webp_quality=jpg_webp_quality,
+            date_format=date_format,
+            time_format=time_format,
+            save_metadata_file=save_metadata_file,
+            extra_info=extra_info,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )
+
+    @staticmethod
+    def value_if_isinstance(value, type, default):
+        # TODO consider logging a warning if the value is not an instance of the type
+        return value if isinstance(value, type) else default
 
 
 class SDParameterGenerator:
@@ -1362,6 +1544,7 @@ class SDLoraSelector:
 NODE_CLASS_MAPPINGS = {
     "SDPromptReader": SDPromptReader,
     "SDPromptSaver": SDPromptSaver,
+    "SDPromptSaverContext": SDPromptSaverContext,
     "SDParameterGenerator": SDParameterGenerator,
     "SDPromptMerger": SDPromptMerger,
     "SDTypeConverter": SDTypeConverter,
@@ -1375,6 +1558,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SDPromptReader": "SD Prompt Reader",
     "SDPromptSaver": "SD Prompt Saver",
+    "SDPromptSaverContext": "SD Prompt Saver Ctx",
     "SDParameterGenerator": "SD Parameter Generator",
     "SDPromptMerger": "SD Prompt Merger",
     "SDTypeConverter": "SD Type Converter",
