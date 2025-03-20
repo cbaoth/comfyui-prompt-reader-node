@@ -425,7 +425,7 @@ class SDPromptSaver:
         extra_pnginfo=None,
     ):
 
-        #print(f"SDPromptSaver#save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
+        #print(f"SDPromptSaver.save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
         (
             full_output_folder,
             filename_alt,
@@ -530,8 +530,11 @@ class SDPromptSaver:
                 "%extension": extension,
                 "%modelhash": model_hash if isinstance(model_hash, str) else "",
                 "%model": Path(model_name_real).stem,
+                "%vae": Path(vae_name).stem,
                 "%sampler": sampler_name_real,
                 "%scheduler": scheduler_real,
+                "%positive": positive,
+                "%negative": negative,
                 "%quality": jpg_webp_quality,
             }
 
@@ -724,51 +727,17 @@ class SDPromptSaverContext(SDPromptSaver):
             SDPromptSaverContext.ti_names.append(Path(file).name)
             SDPromptSaverContext.ti_stems.append(Path(file).stem)
         return {
+            "required": {
+                "context": ("RGTHREE_CONTEXT", {"default": {}}),
+            },
             "optional": {
-                "context": ("RGTHREE_CONTEXT",),
-                "images": ("IMAGE",),
                 "filename": (
                     "STRING",
                     {"default": "ComfyUI_%time_%seed_%counter", "multiline": False},
                 ),
                 "path": ("STRING", {"default": "%date/", "multiline": False}),
-                "model_name": (folder_paths.get_filename_list("checkpoints"),),
-                "vae_name": (folder_paths.get_filename_list("vae"),),
-                "seed": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 0xFFFFFFFFFFFFFFFF,
-                    },
-                ),
-                "steps": (
-                    "INT",
-                    {"default": 20, "min": 1, "max": 10000},
-                ),
-                "cfg": (
-                    "FLOAT",
-                    {
-                        "default": 8.0,
-                        "min": 0.0,
-                        "max": 100.0,
-                        "step": 0.5,
-                        "round": 0.01,
-                    },
-                ),
-                "sampler_name": (comfy.samplers.KSampler.SAMPLERS, ),
-                "scheduler": (comfy.samplers.KSampler.SCHEDULERS, ),
+                "vae_name": (folder_paths.get_filename_list("vae"), {"default": ""}), # TODO try to get vae name from vae
                 "lora_name": any_type,
-                "width": (
-                    "INT",
-                    {"default": 1, "min": 1, "max": MAX_RESOLUTION, "step": 1},
-                ),
-                "height": (
-                    "INT",
-                    {"default": 1, "min": 1, "max": MAX_RESOLUTION, "step": 1},
-                ),
-                "positive": ("STRING", {"default": "", "multiline": True}),
-                "negative": ("STRING", {"default": "", "multiline": True}),
                 "extension": (["png", "jpg", "jpeg", "webp"],),
                 "calculate_hash": ("BOOLEAN", {"default": True}),
                 "resource_hash": ("BOOLEAN", {"default": True}),
@@ -808,24 +777,11 @@ class SDPromptSaverContext(SDPromptSaver):
     def save_images(
         self,
         context={},
-        images=None,
         filename: str = "ComfyUI_%time_%seed_%counter",
         path: str = "%date/",
-        model_name: str = "",
         vae_name: str = "",
-        seed: int = 0,
-        steps: int = 0,
-        cfg: float = 0.0,
-        sampler_name: str = "",
-        # "sampler_name_str": ("STRING", {"default": ""}),
-        scheduler: str = "",
-        # "scheduler_str": ("STRING", {"default": ""}),
-        lora_name=None,
-        width: int = 1,
-        height: int = 1,
-        # TODO consider adding separate inputs for g/l prompts, same as in the context
-        positive: str = "",
-        negative: str = "",
+        # some defaults must be None, otherwise we will never be able to fallback to the context (see below)
+        lora_name="",
         extension: str = "png",
         calculate_hash: bool = True,
         resource_hash: bool = True,
@@ -841,52 +797,46 @@ class SDPromptSaverContext(SDPromptSaver):
         prompt=None,
         extra_pnginfo=None,
     ):
-        #print(f"SDPromptSaverContext#save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
+        print(f"SDPromptSaverContext.save_images(self={self}, context={context}, ...)")  # Debug print
 
-        # Use the individual inputs if provided (not None), otherwise fallback to the context values
+        # Get values from rgthree context or None if not present
         context_values = context or {}
-        images = images if images is not None else context_values.get("images")
-        model_name = model_name if model_name is not None else value_if_isinstance(string, context_values.get("ckpt_name", str, ""))
-        #vae_name = vae_name if isinstance(vae_name, str) else ""
-        seed = seed if seed is not None else context_values.get("seed")
-        steps = steps if steps is not None else context_values.get("steps")
-        cfg = cfg if cfg is not None else context_values.get("cfg")
-        sampler_name = sampler_name if sampler_name is not None else context_values.get("sampler")
-        scheduler = scheduler if scheduler is not None else context_values.get("scheduler")
-        width = width if width is not None else context_values.get("clip_width")
-        height = height if height is not None else context_values.get("clip_height")
-        # TODO consider adding logic to apply ctx_prompt_format/ctx_prompt_format_neg patterns (join g/l prompts)
-        positive = positive if positive is not None else context_values.get("text_pos_g")
-        negative = negative if negative is not None else context_values.get("text_neg_g")
 
-        return super().save_images(
-            images=images,
-            filename=filename,
-            path=path,
-            model_name=model_name,
-            vae_name=vae_name,
-            seed=seed,
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-            lora_name=lora_name,
-            width=width,
-            height=height,
-            positive=positive,
-            negative=negative,
-            extension=extension,
-            calculate_hash=calculate_hash,
-            resource_hash=resource_hash,
-            lossless_webp=lossless_webp,
-            jpg_webp_quality=jpg_webp_quality,
-            date_format=date_format,
-            time_format=time_format,
-            save_metadata_file=save_metadata_file,
-            extra_info=extra_info,
-            prompt=prompt,
-            extra_pnginfo=extra_pnginfo,
-        )
+        # Create a dict of named args, filtering out None values
+        kwargs = {
+            "images": context_values.get("images"),
+            "filename": filename,
+            "path": path,
+            "model_name": self.value_if_isinstance(context_values.get("ckpt_name"), str, None),
+            "vae_name": vae_name, # TODO try to get vae name from vae
+            "seed": context_values.get("seed"),
+            "steps": context_values.get("steps"),
+            "cfg": context_values.get("cfg"),
+            "sampler_name": context_values.get("sampler"),
+            "scheduler": context_values.get("scheduler"),
+            "lora_name": lora_name,
+            "width": context_values.get("clip_width"),
+            "height": context_values.get("clip_height"),
+            "positive": context_values.get("text_pos_g"),
+            "negative": context_values.get("text_neg_g"),
+            "extension": extension,
+            "calculate_hash": calculate_hash,
+            "resource_hash": resource_hash,
+            "lossless_webp": lossless_webp,
+            "jpg_webp_quality": jpg_webp_quality,
+            "date_format": date_format,
+            "time_format": time_format,
+            "save_metadata_file": save_metadata_file,
+            "extra_info": extra_info,
+            "prompt": prompt,
+            "extra_pnginfo": extra_pnginfo
+        }
+
+        # Remove keys with None values to use super's defaults
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+
+        print(f"SDPromptSaverContext.super().save_images with kwargs: {kwargs}")  # Debug print
+        return super().save_images(**kwargs)
 
     @staticmethod
     def value_if_isinstance(value, type, default):

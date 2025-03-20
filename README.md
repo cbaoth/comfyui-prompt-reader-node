@@ -325,10 +325,25 @@ of the `Prompt Saver` Node.
 
 I made the following changes to the original code, to fit my needs:
 
-- Added a new node `SD Prompt Saver Ctx`, which is a custom extension of the existing `SD Prompt Saver` node:
-  - Optional `context` input added:
-    - Compatible with [rgthree-comfy](https://github.com/rgthree/rgthree-comfy)'s [Context / Context Big](https://github.com/rgthree/rgthree-comfy?tab=readme-ov-file#context--context-big) nodes.
-    - All applicable values from `context` are used as fallbacks in case the corresponding `SD Prompt Saver Ctx` input is None, including the previosly mandatory input `images`. So the fallback strategy is:
-      - `node.images OR context.images OR None (Error)`
+- Updated the `SDParameterExtractor` node:
+  - Modified the settings parser so that Lora tags `<lora:foo...>` are no longer considered keys (no more: `<lora: foo...` fields, and partial prompts as a result)
+  - Modified the settings parser so that values with line breaks are (more or less) supported, and `:` wrapped in brackets or double quotes should no longer result in additional keys and partial values.
+    - So `Extra Info:` `Foo: (a: 1\nb: 2),\nBar: "a: 1, b: 2"` should result in two fields, `Foo` = `a: 1\nb: 2` and `Bar` = `a: 1, b: 2`
+    - Best effort and no guaranty at all that this hack is compatible with any other tools. For now it works for me to (re)store morst many additional values as needed, including e.g. multiple multi-line prompt-templates wrapped in `()` or `""`. Surely a Json or similar would be more appropriate but I discarded my prototypes and stuck with this since it works for me.
+- Updated the `SDPromptSaver` node:
+  - Added the following `filename` / `path` variables:
+    - `%modelhash`
+    - `%vae`
+    - `%prompt`
+    - `%negative`
+  - Added support for optional truncation of all `filename` / `path` variables using the `%{parameter}:{n}%` pattern.
+    - Example: `%date %model:20% %positive:50%` will truncate the model name to 20 characters and the prompt to 50 characters.
+- Added a new node `SDPromptSaverContext`, which is a custom extension of the existing `SDPromptSaver` node:
+  - Mandatory input `context` of type `RGTHREE_CONTEXT` added, replacing `image` input as well as many optional inputs:
+    - Compatible with the [Context / Context Big](https://github.com/rgthree/rgthree-comfy?tab=readme-ov-file#context--context-big) node from the [rgthree-comfy](https://github.com/rgthree/rgthree-comfy) custom nodes repo.
 
-Note that this fork is primarily intended for my personal use, which in doubt means: No support, no warranty, no guarantees. Use at your own risk.
+### Ideas
+
+Some ideas (not yet implemented) for future updates:
+
+- Support save file formatting like `%date:FORMAT%` (or similar), so that something like `%date:%yyyy-MM%/%date:yyyy-MM-dd%T...` would be possible without adding more `date` / `time` widgets to the node.
