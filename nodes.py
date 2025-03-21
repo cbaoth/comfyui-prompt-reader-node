@@ -425,7 +425,7 @@ class SDPromptSaver:
         extra_pnginfo=None,
     ):
 
-        #print(f"SDPromptSaver.save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug print
+        #print(f"SDPromptSaver.save_images(self={self}, images={images}, filename={filename}, ...)")  # Debug
         (
             full_output_folder,
             filename_alt,
@@ -663,6 +663,7 @@ class SDPromptSaver:
     @staticmethod
     def get_path(name, variable_map):
         result = name
+        #print(f"SDPromptSaver.get_path: call[name='{name}', variable_map={variable_map}]")  # Debug
         for variable, value in sorted(variable_map.items(), key=lambda x: len(x[0]), reverse=True):
             pattern = f"{variable}(?::(\d+)%)?"
 
@@ -674,9 +675,8 @@ class SDPromptSaver:
                 return val
 
             result = re.sub(pattern, replace_func, result)
-            print(f"After replacing {variable}: {result}")  # Debug print
-
-        print(f"Final path: {result}\nVariable map: {variable_map}")  # Debug print
+            #print(f"SDPromptSaver.get_path: iteration[variable={variable}, value{value}] -> {result}")  # Debug
+        #print(f"SDPromptSaver.get_path: result={result}\n")  # Debug
         return Path(result)
 
     @staticmethod
@@ -797,7 +797,7 @@ class SDPromptSaverContext(SDPromptSaver):
         prompt=None,
         extra_pnginfo=None,
     ):
-        print(f"SDPromptSaverContext.save_images(self={self}, context={context}, ...)")  # Debug print
+        #print(f"SDPromptSaverContext.save_images(self={self}, context={context}, ...)")  # Debug print
 
         # Get values from rgthree context or None if not present
         context_values = context or {}
@@ -835,7 +835,7 @@ class SDPromptSaverContext(SDPromptSaver):
         # Remove keys with None values to use super's defaults
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-        print(f"SDPromptSaverContext.super().save_images with kwargs: {kwargs}")  # Debug print
+        #print(f"SDPromptSaverContext.super().save_images with kwargs: {kwargs}")  # Debug
         return super().save_images(**kwargs)
 
     @staticmethod
